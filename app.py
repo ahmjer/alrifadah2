@@ -2,75 +2,95 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+from fpdf import FPDF
+import tempfile
+import os
 
-# 1. يجب أن يكون هذا أول أمر في الكود
-st.set_page_config(page_title="نظام تقييم الموردين", layout="wide")
+# إعداد الصفحة
+st.set_page_config(page_title="نظام تقييم الموردين المتطور", layout="wide")
 
-# 2. تهيئة مخزن البيانات
+# تهيئة البيانات
 if 'suppliers_data' not in st.session_state:
     st.session_state.suppliers_data = pd.DataFrame(columns=[
         "التاريخ", "اسم الموظف", "المورد", "الجودة", "الوقت", "السعر", "التواصل", "النتيجة النهائية"
     ])
 
-# 3. القائمة الجانبية
-st.sidebar.title("القائمة الرئيسية")
-page = st.sidebar.selectbox("اختر الصفحة:", ["إدخال تقييم جديد", "لوحة التحكم والتقارير"])
-
-# --- الصفحة الأولى: إدخال تقييم جديد ---
-if page == "إدخال تقييم جديد":
-    st.header("📝 نموذج تقييم مورد جديد")
+# دالة إنشاء تقرير PDF
+def generate_pdf(dataframe, plot_fig):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
     
+    # عنوان التقرير
+    pdf.cell(190, 10, "Supplier Evaluation Report", ln=True, align='C')
+    pdf.ln(10)
+    
+    # ملخص البيانات (جدول بسيط)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(190, 10, f"Date: {datetime.now().strftime('%Y-%m-%d')}", ln=True)
+    pdf.ln(5)
+    
+    # تحويل الرسم البياني إلى صورة مؤقتة
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmpfile:
+        plot_fig.write_image(tmpfile.name)
+        pdf.image(tmpfile.name, x=10, y=None, w=180)
+    
+    pdf.ln(10)
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(190, 10, "Summary Table:", ln=True)
+    
+    # إضافة البيانات كجدول
+    pdf.set_font("Arial", "", 9)
+    for index, row in dataframe.iterrows():
+        text = f"Supplier: {row['المورد']} | Score: {row['النتيجة النهائية']:.1f}% | By: {row['اسم الموظف']}"
+        pdf.cell(190, 8, text, border=1, ln=True)
+
+    return pdf.output()
+
+# --- واجهة التطبيق ---
+st.title("🚀 نظام تقييم الموردين مع تصدير PDF")
+
+tab1, tab2 = st.tabs(["➕ إدخال بيانات", "📊 التقارير والتصدير"])
+
+with tab1:
     with st.form("eval_form"):
         col1, col2 = st.columns(2)
         with col1:
             emp_name = st.text_input("اسم الموظف")
             sup_name = st.text_input("اسم المورد")
         with col2:
-            eval_date = st.date_input("تاريخ التقييم", datetime.now())
-        
-        st.write("---")
-        st.write("⭐ درجات التقييم (من 1 إلى 10)")
-        c1, c2, c3, c4 = st.columns(4)
-        q = c1.number_input("الجودة", 1, 10, 5)
-        t = c2.number_input("الوقت", 1, 10, 5)
-        p = c3.number_input("السعر", 1, 10, 5)
-        s = c4.number_input("التواصل", 1, 10, 5)
+            q = st.slider("الجودة", 1, 10, 8)
+            t = st.slider("الوقت", 1, 10, 7)
         
         submitted = st.form_submit_button("حفظ التقييم")
-        
         if submitted:
-            if emp_name and sup_name:
-                score = (q*0.4 + t*0.3 + p*0.2 + s*0.1) * 10
-                new_row = {
-                    "التاريخ": str(eval_date), "اسم الموظف": emp_name, 
-                    "المورد": sup_name, "الجودة": q, "الوقت": t, 
-                    "السعر": p, "التواصل": s, "النتيجة النهائية": score
-                }
-                st.session_state.suppliers_data = pd.concat([st.session_state.suppliers_data, pd.DataFrame([new_row])], ignore_index=True)
-                st.success("تم الحفظ بنجاح!")
-            else:
-                st.warning("يرجى ملء جميع الحقول")
+            score = (q*0.5 + t*0.5) * 10 # معادلة بسيطة
+            new_row = {"التاريخ": str(datetime.now().date()), "اسم الموظف": emp_name, 
+                       "المورد": sup_name, "الجودة": q, "الوقت": t, "النتيجة النهائية": score}
+            st.session_state.suppliers_data = pd.concat([st.session_state.suppliers_data, pd.DataFrame([new_row])], ignore_index=True)
+            st.success("تم الحفظ!")
 
-# --- الصفحة الثانية: التقارير ---
-else:
-    st.header("📊 التقارير والإحصائيات")
+with tab2:
     df = st.session_state.suppliers_data
-    
-    if df.empty:
-        st.info("لا توجد بيانات حالياً.")
-    else:
-        # فلترة حسب الموظف
-        all_emps = ["الكل"] + list(df["اسم الموظف"].unique())
-        selected_emp = st.selectbox("عرض تقارير موظف معين:", all_emps)
-        
-        filtered_df = df if selected_emp == "الكل" else df[df["اسم الموظف"] == selected_emp]
-        
-        st.dataframe(filtered_df, use_container_width=True)
-        
-        # رسم بياني بسيط
-        fig = px.bar(filtered_df, x="المورد", y="النتيجة النهائية", color="المورد", title="أداء الموردين")
+    if not df.empty:
+        st.write("### معاينة البيانات")
+        st.dataframe(df)
+
+        # إنشاء الرسم البياني
+        fig = px.bar(df, x="المورد", y="النتيجة النهائية", color="المورد", title="مقارنة أداء الموردين")
         st.plotly_chart(fig)
-        
-        # زر التحميل
-        csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 تحميل التقرير CSV", csv, "report.csv", "text/csv")
+
+        # زر تصدير PDF
+        if st.button("📄 تجهيز تقرير PDF للتحميل"):
+            try:
+                pdf_bytes = generate_pdf(df, fig)
+                st.download_button(
+                    label="📥 تحميل التقرير الآن",
+                    data=pdf_bytes,
+                    file_name="Supplier_Report.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"حدث خطأ أثناء إنشاء PDF: {e}")
+    else:
+        st.info("لا توجد بيانات كافية لإصدار تقرير.")
