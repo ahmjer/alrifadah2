@@ -3,113 +3,74 @@ import pandas as pd
 import plotly.express as px
 from datetime import datetime
 
-# إعدادات الصفحة
-st.set_page_config(page_title="نظام إدارة وتقييم الموردين", layout="wide")
+# 1. يجب أن يكون هذا أول أمر في الكود
+st.set_page_config(page_title="نظام تقييم الموردين", layout="wide")
 
-# تهيئة مخزن البيانات (في الجلسة الحالية)
+# 2. تهيئة مخزن البيانات
 if 'suppliers_data' not in st.session_state:
-    # بيانات تجريبية أولية
     st.session_state.suppliers_data = pd.DataFrame(columns=[
         "التاريخ", "اسم الموظف", "المورد", "الجودة", "الوقت", "السعر", "التواصل", "النتيجة النهائية"
     ])
 
-# القائمة الجانبية للتنقل
-st.sidebar.title("🗂 القائمة الرئيسية")
-page = st.sidebar.radio("انتقل إلى:", ["لوحة التحكم (الإحصائيات)", "إدخال تقييم جديد", "تقارير الموظفين"])
+# 3. القائمة الجانبية
+st.sidebar.title("القائمة الرئيسية")
+page = st.sidebar.selectbox("اختر الصفحة:", ["إدخال تقييم جديد", "لوحة التحكم والتقارير"])
 
 # --- الصفحة الأولى: إدخال تقييم جديد ---
 if page == "إدخال تقييم جديد":
     st.header("📝 نموذج تقييم مورد جديد")
     
-    with st.form("evaluation_form"):
+    with st.form("eval_form"):
         col1, col2 = st.columns(2)
         with col1:
-            employee_name = st.text_input("اسم الموظف القائم بالتقييم")
-            supplier_name = st.text_input("اسم المورد")
+            emp_name = st.text_input("اسم الموظف")
+            sup_name = st.text_input("اسم المورد")
         with col2:
-            date_eval = st.date_input("تاريخ التقييم", datetime.now())
-            
-        st.markdown("---")
-        st.write("⭐ **درجات التقييم (من 1 إلى 10):**")
+            eval_date = st.date_input("تاريخ التقييم", datetime.now())
+        
+        st.write("---")
+        st.write("⭐ درجات التقييم (من 1 إلى 10)")
         c1, c2, c3, c4 = st.columns(4)
-        q = c1.slider("الجودة", 1, 10, 5)
-        t = c2.slider("الالتزام بالوقت", 1, 10, 5)
-        p = c3.slider("السعر", 1, 10, 5)
-        s = c4.slider("التواصل", 1, 10, 5)
+        q = c1.number_input("الجودة", 1, 10, 5)
+        t = c2.number_input("الوقت", 1, 10, 5)
+        p = c3.number_input("السعر", 1, 10, 5)
+        s = c4.number_input("التواصل", 1, 10, 5)
         
-        submit = st.form_submit_button("حفظ التقييم")
+        submitted = st.form_submit_button("حفظ التقييم")
         
-        if submit:
-            if employee_name and supplier_name:
-                # حساب النتيجة (بافتراض أوزان متساوية أو ثابتة)
-                final_score = (q * 0.4 + t * 0.3 + p * 0.2 + s * 0.1) * 10
-                
-                new_data = {
-                    "التاريخ": date_eval,
-                    "اسم الموظف": employee_name,
-                    "المورد": supplier_name,
-                    "الجودة": q,
-                    "الوقت": t,
-                    "السعر": p,
-                    "التواصل": s,
-                    "النتيجة النهائية": final_score
+        if submitted:
+            if emp_name and sup_name:
+                score = (q*0.4 + t*0.3 + p*0.2 + s*0.1) * 10
+                new_row = {
+                    "التاريخ": str(eval_date), "اسم الموظف": emp_name, 
+                    "المورد": sup_name, "الجودة": q, "الوقت": t, 
+                    "السعر": p, "التواصل": s, "النتيجة النهائية": score
                 }
-                
-                st.session_state.suppliers_data = pd.concat([st.session_state.suppliers_data, pd.DataFrame([new_data])], ignore_index=True)
-                st.success(f"تم حفظ تقييم المورد '{supplier_name}' بنجاح!")
+                st.session_state.suppliers_data = pd.concat([st.session_state.suppliers_data, pd.DataFrame([new_row])], ignore_index=True)
+                st.success("تم الحفظ بنجاح!")
             else:
-                st.error("يرجى إكمال اسم الموظف والمورد")
+                st.warning("يرجى ملء جميع الحقول")
 
-# --- الصفحة الثانية: لوحة التحكم ---
-elif page == "لوحة التحكم (الإحصائيات)":
-    st.header("📊 تحليل أداء الموردين العام")
+# --- الصفحة الثانية: التقارير ---
+else:
+    st.header("📊 التقارير والإحصائيات")
+    df = st.session_state.suppliers_data
     
-    if st.session_state.suppliers_data.empty:
-        st.info("لا توجد بيانات حالياً. قم بإضافة تقييمات من صفحة 'إدخال تقييم جديد'.")
+    if df.empty:
+        st.info("لا توجد بيانات حالياً.")
     else:
-        df = st.session_state.suppliers_data
+        # فلترة حسب الموظف
+        all_emps = ["الكل"] + list(df["اسم الموظف"].unique())
+        selected_emp = st.selectbox("عرض تقارير موظف معين:", all_emps)
         
-        # ملخص سريع
-        c1, c2, c3 = st.columns(3)
-        c1.metric("عدد الموردين", df["المورد"].nunique())
-        c2.metric("إجمالي التقييمات", len(df))
-        c3.metric("متوسط الأداء العام", f"{df['النتيجة النهائية'].mean():.1f}%")
-
-        # رسم بياني لأفضل الموردين
-        fig = px.bar(df.groupby("المورد")["النتيجة النهائية"].mean().reset_index(), 
-                     x="المورد", y="النتيجة النهائية", title="متوسط أداء الموردين",
-                     color="النتيجة النهائية", color_continuous_scale="RdYlGn")
-        st.plotly_chart(fig, use_container_width=True)
-
-# --- الصفحة الثالثة: تقارير الموظفين ---
-elif page == "تقارير الموظفين":
-    st.header("📋 استخراج تقارير التقييم")
-    
-    if st.session_state.suppliers_data.empty:
-        st.info("لا توجد بيانات لاستخراج التقارير.")
-    else:
-        df = st.session_state.suppliers_data
+        filtered_df = df if selected_emp == "الكل" else df[df["اسم الموظف"] == selected_emp]
         
-        # تصفية حسب الموظف
-        employees = ["الكل"] + list(df["اسم الموظف"].unique())
-        selected_emp = st.selectbox("اختر الموظف لعرض تقييماته:", employees)
+        st.dataframe(filtered_df, use_container_width=True)
         
-        if selected_emp == "الكل":
-            report_df = df
-        else:
-            report_df = df[df["اسم الموظف"] == selected_emp]
-            
-        st.write(f"### التقييمات التي أجراها: {selected_emp}")
-        st.dataframe(report_df, use_container_width=True)
+        # رسم بياني بسيط
+        fig = px.bar(filtered_df, x="المورد", y="النتيجة النهائية", color="المورد", title="أداء الموردين")
+        st.plotly_chart(fig)
         
-        # تصدير التقرير
-        csv = report_df.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 تحميل التقرير (Excel/CSV)",
-            data=csv,
-            file_name=f"تقرير_تقييم_{selected_emp}_{datetime.now().date()}.csv",
-            mime='text/csv',
-        )
-
-st.sidebar.markdown("---")
-st.sidebar.info("ملاحظة: هذه البيانات تُحفظ في الجلسة الحالية. لتخزين دائم، يجب ربط التطبيق بقاعدة بيانات أو Google Sheets.")
+        # زر التحميل
+        csv = filtered_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 تحميل التقرير CSV", csv, "report.csv", "text/csv")
